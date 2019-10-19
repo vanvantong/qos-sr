@@ -309,9 +309,35 @@ public class EcmpShortestPathGraph {
             for(TopologyEdge egde: egdes){
                 weightTopology.weight(egde);
             }
-            Set<Path> paths =McastHandler.topologyService.getPaths(McastHandler.topologyService.currentTopology(), src, dst, weightTopology);
+            Set<Path> paths = McastHandler.topologyService.getPaths(McastHandler.topologyService.currentTopology(), src, dst, weightTopology);
+            Set<Path> rPaths = new HashSet<Path>() ;
+            if((src.toString().compareTo("of:0000000000000006") == 0 && dst.toString().compareTo("of:0000000000000007") == 0) || (src.toString().compareTo("of:0000000000000007") == 0 && dst.toString().compareTo("of:0000000000000006") == 0) ){               
+                rPaths = paths;
+                if(src.toString().compareTo("of:0000000000000006") == 0){
+                    for(int i = 1; i < 6; i++){
+                        String idRouter = "of:000000000000000"+String.valueOf(i);
+                        if(paths.toString().contains(idRouter)){
+                            McastHandler.fwString = idRouter;
+                        }
+                    }
+                }else if(src.toString().compareTo("of:0000000000000007") == 0){
+                    for(int i = 1; i < 6; i++){
+                        String idRouter = "of:000000000000000"+String.valueOf(i);
+                        if(paths.toString().contains(idRouter)){
+                            McastHandler.bwString = idRouter;
+                        }
+                    }
+                }
+                //log.info("\n********************fwString: {}, bwString: {}\n", McastHandler.fwString, McastHandler.bwString);
+            }
 
-            return paths;
+            if(paths.toString().contains("of:0000000000000006") && (paths.toString().contains(McastHandler.fwString) || paths.toString().contains(McastHandler.bwString))){
+                rPaths = paths;
+            } else if(paths.toString().contains("of:0000000000000007") && (paths.toString().contains(McastHandler.fwString) || paths.toString().contains(McastHandler.bwString))){
+                rPaths = paths;
+            }
+            
+            return rPaths;
         }     
 
 
