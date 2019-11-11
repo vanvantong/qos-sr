@@ -1898,16 +1898,21 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     private final class sr_reconfig implements Runnable {
         @Override
         public void run() {
-            defaultRoutingHandler.startPopulationProcess();
-
+            
             for (Device dev : deviceService.getDevices()){
                 if(dev.id().toString().compareTo("of:0000000000000204") == 0){
-                    final Iterable<FlowEntry> flowEntries = flowService.getFlowEntries(dev.id());
-                    log.info("\n********************FlowEntries: {}\n", flowEntries);
+                    Iterable<FlowEntry> flowEntries = flowService.getFlowEntries(dev.id());
+                    for(FlowEntry flowEntry: flowEntries){
+                        if(flowEntry.toString().contains("org.onosproject.segmentrouting") && flowEntry.toString().contains("ETH_DST:00:00:00:00:02:04")){
+                            flowService.removeFlowRules(flowEntry);
+                        }
+                    }
+                    //log.info("\n********************FlowEntries: {}\n", flowEntries);
                 }
             }
-            //
-              
+            
+            //Re-populate the rule after 3 seconds 
+            defaultRoutingHandler.startPopulationProcess();  
         }
     }
 
