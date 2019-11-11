@@ -174,6 +174,9 @@ import static org.onosproject.segmentrouting.OsgiPropertyConstants.SINGLE_HOMED_
 import static org.onosproject.segmentrouting.OsgiPropertyConstants.SYMMETRIC_PROBING_DEFAULT;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import org.onosproject.net.flow.FlowRuleService;
+import org.onosproject.net.flow.FlowEntry;
+
 /**
  * Segment routing manager.
  */
@@ -260,6 +263,9 @@ public class SegmentRoutingManager implements SegmentRoutingService {
             unbind = "unbindXconnectService",
             policy = ReferencePolicy.DYNAMIC)
     public XconnectService xconnectService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    public FlowRuleService flowService;
 
     //Delay to re-route the sr algorithm
     private static final long SR_DELAY = 3;
@@ -1893,7 +1899,15 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         @Override
         public void run() {
             defaultRoutingHandler.startPopulationProcess();
-            //log.info("\n\n22+++++++++++++++++++++++\n\n");   
+
+            for (Device dev : deviceService.getDevices()){
+                if(dev.id().toString().compareTo("of:0000000000000204") == 0){
+                    final Iterable<FlowEntry> flowEntries = flowService.getFlowEntries(dev.id());
+                    log.info("\n********************FlowEntries: {}\n", flowEntries);
+                }
+            }
+            //
+              
         }
     }
 
