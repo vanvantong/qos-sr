@@ -60,10 +60,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
+import org.onosproject.net.Path;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.onlab.util.Tools.groupedThreads;
+import org.onosproject.segmentrouting.mcast.McastHandler;
+import java.util.Random;
+
 
 /**
  * Default routing handler that is responsible for route computing and
@@ -78,13 +82,13 @@ public class DefaultRoutingHandler {
     private static final long PURGE_DELAY = 1000; // ms
     private static Logger log = LoggerFactory.getLogger(DefaultRoutingHandler.class);
 
-    private SegmentRoutingManager srManager;
-    private RoutingRulePopulator rulePopulator;
-    private HashMap<DeviceId, EcmpShortestPathGraph> currentEcmpSpgMap;
-    private HashMap<DeviceId, EcmpShortestPathGraph> updatedEcmpSpgMap;
+    public SegmentRoutingManager srManager;
+    public RoutingRulePopulator rulePopulator;
+    public HashMap<DeviceId, EcmpShortestPathGraph> currentEcmpSpgMap;
+    public HashMap<DeviceId, EcmpShortestPathGraph> updatedEcmpSpgMap;
     private DeviceConfiguration config;
     private final Lock statusLock = new ReentrantLock();
-    private volatile Status populationStatus;
+    public volatile Status populationStatus;
     private ScheduledExecutorService executorService
         = newScheduledThreadPool(1, groupedThreads("retryftr", "retry-%d", log));
     private ScheduledExecutorService executorServiceMstChg
@@ -94,6 +98,8 @@ public class DefaultRoutingHandler {
 
     private Instant lastRoutingChange = Instant.EPOCH;
     private Instant lastFullReroute = Instant.EPOCH;
+    McastHandler mcastHandler = null;
+
 
     // Distributed store to keep track of ONOS instance that should program the
     // device pair. There should be only one instance (the king) that programs the same pair.
@@ -222,8 +228,7 @@ public class DefaultRoutingHandler {
      * startup or after a configuration event.
      */
     public void populateAllRoutingRules() {
-        //log.info("\n\n**********************************1\n\n");
-
+        //log.info("\n********************1\n");
         lastRoutingChange = Instant.now();
         statusLock.lock();
         try {
@@ -243,10 +248,10 @@ public class DefaultRoutingHandler {
             Set<EdgePair> edgePairs = new HashSet<>();
             Set<ArrayList<DeviceId>> routeChanges = new HashSet<>();
             for (DeviceId dstSw : srManager.deviceConfiguration.getRouters()) {
-                EcmpShortestPathGraph ecmpSpgUpdated =
-                        new EcmpShortestPathGraph(dstSw, srManager);
+                EcmpShortestPathGraph ecmpSpgUpdated = new EcmpShortestPathGraph(dstSw, srManager);
                 updatedEcmpSpgMap.put(dstSw, ecmpSpgUpdated);
                 Optional<DeviceId> pairDev = srManager.getPairDeviceId(dstSw);
+                
                 if (pairDev.isPresent()) {
                     // pairDev may not be available yet, but we still need to add
                     ecmpSpgUpdated = new EcmpShortestPathGraph(pairDev.get(), srManager);
@@ -260,6 +265,7 @@ public class DefaultRoutingHandler {
                 } else {
                     lastProgrammed.add(dstSw);
                 }
+                //
                 // To do a full reroute, assume all route-paths have changed
                 for (DeviceId dev : deviceAndItsPair(dstSw)) {
                     for (DeviceId targetSw : srManager.deviceConfiguration.getRouters()) {
@@ -273,6 +279,7 @@ public class DefaultRoutingHandler {
 
             if (!redoRouting(routeChanges, edgePairs, null)) {
                 log.debug("populateAllRoutingRules: populationStatus is ABORTED");
+                log.info("populateAllRoutingRules: populationStatus is ABORTED");
                 populationStatus = Status.ABORTED;
                 log.warn("Failed to repopulate all routing rules.");
                 return;
@@ -299,7 +306,7 @@ public class DefaultRoutingHandler {
      */
     // XXX refactor
     protected void populateSubnet(Set<ConnectPoint> cpts, Set<IpPrefix> subnets) {
-
+        //log.info("\n********************2\n");
         if (cpts == null || cpts.size() < 1 || cpts.size() > 2) {
             log.warn("Skipping populateSubnet due to illegal size of connect points. {}", cpts);
             return;
@@ -443,7 +450,7 @@ public class DefaultRoutingHandler {
     // TODO This method should be refactored into three separated methods
     public void populateRoutingRulesForLinkStatusChange(Link linkDown, Link linkUp,
                                                         DeviceId switchDown, boolean seenBefore) {
-
+        //log.info("\n********************3\n");
         if (Stream.of(linkDown, linkUp, switchDown).filter(Objects::nonNull)
                 .count() != 1) {
             log.warn("Only one event can be handled for link status change .. aborting");
@@ -578,6 +585,7 @@ public class DefaultRoutingHandler {
             if (route.size() == 1) {
                 DeviceId dstSw = route.get(0);
                 EcmpShortestPathGraph ec = updatedEcmpSpgMap.get(dstSw);
+
                 if (ec == null) {
                     log.warn("No graph found for {} .. aborting redoRouting", dstSw);
                     return false;
@@ -605,12 +613,12 @@ public class DefaultRoutingHandler {
                                         updatedDevices)) {
             return false; //abort routing and fail fast
         }
-
         // update ecmpSPG for all edge-pairs
         for (EdgePair ep : edgePairs) {
             currentEcmpSpgMap.put(ep.dev1, updatedEcmpSpgMap.get(ep.dev1));
             currentEcmpSpgMap.put(ep.dev2, updatedEcmpSpgMap.get(ep.dev2));
             log.debug("Updating ECMPspg for edge-pair:{}-{}", ep.dev1, ep.dev2);
+            log.info("Updating ECMPspg for edge-pair:{}-{}", ep.dev1, ep.dev2);
         }
 
         // here is where we update all devices not touched by this instance
@@ -620,6 +628,7 @@ public class DefaultRoutingHandler {
             .forEach(devId -> {
                 currentEcmpSpgMap.put(devId, updatedEcmpSpgMap.get(devId));
                 log.debug("Updating ECMPspg for remaining dev:{}", devId);
+                log.info("Updating ECMPspg for remaining dev:{}", devId);
             });
         return true;
     }
@@ -687,6 +696,8 @@ public class DefaultRoutingHandler {
                     Set<DeviceId> nhops = getNextHops(route.get(0), route.get(1));
                     log.debug("route: target {} -> dst {} found with next-hops {}",
                               route.get(0), route.get(1), nhops);
+                    //log.info("\n\n*********************route1: target {} -> dst {} found with next-hops {}\n\n",
+                    //          route.get(0), route.get(1), nhops);
                     perDstNextHops.put(route.get(1), nhops);
                 });
                 Set<IpPrefix> ipDev1 = (subnets == null) ? config.getSubnets(ep.dev1)
@@ -787,6 +798,8 @@ public class DefaultRoutingHandler {
                 DeviceId targetSw = route.get(0);
                 DeviceId dstSw = route.get(1); // same as impactedDstDevice
                 Set<DeviceId> nextHops = getNextHops(targetSw, dstSw);
+                
+
                 if (nextHops.isEmpty()) {
                     log.debug("Could not find next hop from target:{} --> dst {} "
                             + "skipping this route", targetSw, dstSw);
@@ -794,6 +807,9 @@ public class DefaultRoutingHandler {
                 }
                 Map<DeviceId, Set<DeviceId>> nhops = new HashMap<>();
                 nhops.put(dstSw, nextHops);
+                //if(targetSw.toString().compareTo("of:0000000000000006") == 0 && dstSw.toString().compareTo("of:0000000000000007") == 0){
+                //    log.info("\n\n*********************route2: target {} -> dst {} found with next-hops {}\n\n",targetSw, dstSw, nhops.get(dstSw));
+                //}
                 if (!populateEcmpRoutingRulePartial(targetSw, dstSw, null, nhops,
                          (subnets == null) ? Sets.newHashSet() : subnets)) {
                     return false; // abort routing and fail fast
@@ -1840,12 +1856,65 @@ public class DefaultRoutingHandler {
                         nextHops.add(via.get(0));
                     }
                 }
-                log.debug("target {} --> dst: {} has next-hops:{}", targetSw,
-                          dstSw, nextHops);
+                log.debug("target {} --> dst: {} has next-hops:{}", targetSw, dstSw, nextHops);
+                /*
+                if(targetSw.toString().compareTo("of:0000000000000204") == 0 && dstSw.toString().compareTo("of:0000000000000205") == 0){
+                    
+                    Random rand = new Random();
+                    int nSID = rand.nextInt(2);
+                    nSID = nSID + 226;
+                    for (Device dev : srManager.deviceService.getDevices()){
+                        if(!dev.id().toString().contains(String.valueOf(nSID))){
+                            nextHops.remove(dev.id());
+                        }
+                    } 
+                    
+                    log.info("\n********************target {} --> dst: {} has next-hops:{}\n", targetSw, dstSw, nextHops);
+                }
+                */
+
+                /*
+                if(targetSw.toString().compareTo("of:0000000000000006") == 0 && dstSw.toString().compareTo("of:0000000000000007") == 0){
+                    mcastHandler.test = mcastHandler.test + 1;
+                    if(mcastHandler.test >= 5000){
+                        mcastHandler.test = 0;
+                    }
+                    Random rand = new Random();
+                    int nSID = -1;
+                    int tmp = mcastHandler.test % 50;
+                    if(tmp < 25){
+                        //nSID = rand.nextInt(2);
+                        //nSID = nSID + 1;
+                        nSID = 1;
+                    }else{
+                        //nSID = rand.nextInt(2);
+                        //nSID = nSID + 4;
+                        nSID = 5;
+                    }
+                    for (Device dev : srManager.deviceService.getDevices()){
+                        if(!dev.id().toString().contains(String.valueOf(nSID))){
+                            nextHops.remove(dev.id());
+                        }
+                    }                
+                    
+                    log.info("\n********************target {} --> dst: {} has next-hops:{}, Count: {}\n", targetSw, dstSw, nextHops, mcastHandler.test);
+                }
+                */
+
+                
+                if(targetSw.toString().compareTo("of:0000000000000006") == 0 && dstSw.toString().compareTo("of:0000000000000007") == 0){
+                    for (Device dev : srManager.deviceService.getDevices()){                        
+                        if((mcastHandler.idPath != -1) && (!dev.id().toString().contains(String.valueOf(mcastHandler.idPath)) )){
+                            nextHops.remove(dev.id());
+                        }
+                    }                
+                }
+                
                 return nextHops;
             }
         }
         log.debug("No next hops found for target:{} --> dst: {}", targetSw, dstSw);
+        //log.info("No next hops found for target:{} --> dst: {}", targetSw, dstSw);
         return ImmutableSet.of(); //no next-hops found
     }
 
