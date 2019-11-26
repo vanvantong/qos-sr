@@ -152,6 +152,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.HashMap;
+import org.onosproject.net.Path;
+
+
 
 import static com.google.common.base.Preconditions.checkState;
 import static org.onlab.packet.Ethernet.TYPE_ARP;
@@ -174,9 +178,32 @@ import static org.onosproject.segmentrouting.OsgiPropertyConstants.SINGLE_HOMED_
 import static org.onosproject.segmentrouting.OsgiPropertyConstants.SYMMETRIC_PROBING_DEFAULT;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+
+
 import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.FlowEntry;
+import org.onosproject.net.flow.FlowRuleStore;
+import org.onosproject.cli.AbstractShellCommand;
+import org.onosproject.segmentrouting.SegmentRoutingService;
+import org.onosproject.app.ApplicationService;
+import org.onosproject.core.Application;
+import org.onosproject.net.flow.FlowRule;
 
+
+import org.apache.karaf.shell.api.action.Command;
+import org.apache.karaf.shell.api.action.lifecycle.Service;
+import org.onosproject.cli.AbstractShellCommand;
+import org.onosproject.segmentrouting.SegmentRoutingService;
+import org.onosproject.segmentrouting.grouphandler.NextNeighbors;
+import org.onosproject.segmentrouting.storekey.DestinationSetNextObjectiveStoreKey;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 /**
  * Segment routing manager.
  */
@@ -266,9 +293,13 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     public FlowRuleService flowService;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    public FlowRuleStore flowStore;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected ApplicationService applicationService;
 
     //Delay to re-route the sr algorithm
-    private static final long SR_DELAY = 3;
+    private static final long SR_DELAY = 10;
 
     /** Enable active probing to discover dual-homed hosts. */
     boolean activeProbing = ACTIVE_PROBING_DEFAULT;
@@ -1326,19 +1357,15 @@ public class SegmentRoutingManager implements SegmentRoutingService {
             } else if (ethernet.getEtherType() == Ethernet.TYPE_IPV4) {
                 IPv4 ipv4Packet = (IPv4) ethernet.getPayload();
 
-                //log.info("\n\n**********Processing IPv4 packet 1**********\n\n");
-                //ipHandler.addToPacketBuffer(ipv4Packet);
                 if (ipv4Packet.getProtocol() == IPv4.PROTOCOL_ICMP) {
                     icmpHandler.processIcmp(ethernet, pkt.receivedFrom());
                 } else {
-                    //log.info("\n\n**********Processing IPv4 packet 2**********\n\n");
                     // NOTE: We don't support IP learning at this moment so this
                     //       is not necessary. Also it causes duplication of DHCP packets.
                     //ipHandler.processPacketIn(ipv4Packet, pkt.receivedFrom());
                 }
             } else if (ethernet.getEtherType() == Ethernet.TYPE_IPV6) {
                 IPv6 ipv6Packet = (IPv6) ethernet.getPayload();
-                //ipHandler.addToPacketBuffer(ipv6Packet);
                 // We deal with the packet only if the packet is a ICMP6 ECHO/REPLY
                 if (ipv6Packet.getNextHeader() == IPv6.PROTOCOL_ICMP6) {
                     ICMP6 icmp6Packet = (ICMP6) ipv6Packet.getPayload();
@@ -1651,6 +1678,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
      * @param port the port to update
      */
     void processPortUpdated(DeviceId deviceId, Port port) {
+        //log.info("\n\n**********Launched\n\n");
         // first we handle filtering rules associated with the port
         if (port.isEnabled()) {
             log.info("Switchport {}/{} enabled..programming filters",
@@ -1898,22 +1926,129 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     private final class sr_reconfig implements Runnable {
         @Override
         public void run() {
-            
+            /*
             for (Device dev : deviceService.getDevices()){
                 if(dev.id().toString().compareTo("of:0000000000000204") == 0){
+
                     Iterable<FlowEntry> flowEntries = flowService.getFlowEntries(dev.id());
                     for(FlowEntry flowEntry: flowEntries){
-                        if(flowEntry.toString().contains("org.onosproject.segmentrouting") && flowEntry.toString().contains("ETH_DST:00:00:00:00:02:04")){
+                        if(flowEntry.toString().contains("org.onosproject.segmentrouting")){
+                        //if(flowEntry.toString().contains("org.onosproject.segmentrouting") && flowEntry.toString().contains("ETH_DST:00:00:00:00:02:04")){
                             flowService.removeFlowRules(flowEntry);
                         }
                     }
-                    //log.info("\n********************FlowEntries: {}\n", flowEntries);
                 }
             }
+            */
+ /*          
+            for(Application app: applicationService.getApplications()){
+                if(app.id().name().compareTo("org.onosproject.segmentrouting") == 0 ){  
+                    Iterable<FlowEntry> flowEntries = flowService.getFlowEntriesById(app.id());
+                    for(FlowEntry flowEntry: flowEntries){
+                        if(mcastHandler.fwString != null){
+                            //if(flowEntry.toString().contains("of:0000000000000204") || flowEntry.toString().contains(mcastHandler.fwString.toString())){
+                                flowService.removeFlowRules(flowEntry);
+                            //}
+                        }
+
+                    }
+
+                }
+            }              
+ */       
+             //defaultRoutingHandler.update(defaultRoutingHandler.srManager);
             
-            //Re-populate the rule after 3 seconds 
-            defaultRoutingHandler.startPopulationProcess();  
+            //SegmentRoutingService srService = AbstractShellCommand.get(SegmentRoutingService.class);
+            //srService.rerouteNetwork();
+
+            //Re-populate the rule after SR_DELAY seconds
+
+            //mcastHandler.fwString = null;
+            //cfgListener.configureNetwork();
+
+
+
+            
+            /*
+            for (Device dev : deviceService.getDevices()){
+                //if(dev.id().toString().compareTo("of:0000000000000006") == 0){
+                    Iterable<FlowEntry> flowEntries = flowService.getFlowEntries(dev.id());
+                    for(FlowEntry flowEntry: flowEntries){
+                        if(flowEntry.toString().contains("ETH_TYPE:mpls_unicast")){
+                            flowService.removeFlowRules(flowEntry);
+                        }
+                    }
+                //}
+            }
+            */
+            //SegmentRoutingService srService = AbstractShellCommand.get(SegmentRoutingService.class);
+            //srService.rerouteNetwork();
+
+            /*
+            for(DestinationSetNextObjectiveStoreKey keyStore: dsNextObjStore.keySet()){
+                if(keyStore.toString().contains("of:0000000000000006") && keyStore.toString().contains("DstSw1=of:0000000000000007")){
+                    dsNextObjStore.remove(keyStore);
+                }
+            }
+
+            //Repopulate the routing rule
+            defaultRoutingHandler.startPopulationProcess();
+            */
+
+            
+            String statusRouting = readStatusRouting();
+            //log.info("\n********************Status: {}\n",statusRouting);
+            if(statusRouting.compareTo("1") == 0){
+                //Delete the old routing rule to update the newer ones
+                //dsNextObjStore.clear();
+                for(DestinationSetNextObjectiveStoreKey keyStore: dsNextObjStore.keySet()){
+                    if(keyStore.toString().contains("of:0000000000000006") && keyStore.toString().contains("DstSw1=of:0000000000000007")){
+                        dsNextObjStore.remove(keyStore);
+                    }
+                }
+                //SegmentRoutingService srService = AbstractShellCommand.get(SegmentRoutingService.class);
+                //printDestinationSet(srService.getDstNextObjStore());
+
+                //Repopulate the routing rule
+                defaultRoutingHandler.startPopulationProcess();
+            }
+            
+
+
+
+
         }
+    }
+    public String readStatusRouting(){
+        String st = null;
+        try
+        {         
+            BufferedReader br = new BufferedReader(new FileReader("/home/vantong/onos/apps/segmentrouting/app/src/main/java/org/onosproject/segmentrouting/reRouting.csv")); 
+            st = br.readLine(); 
+            br.close();
+            if(st != null){
+                return st;
+            }
+            
+
+        }catch (Exception e){ 
+        e.printStackTrace(); 
+        } 
+        return st;
+    } 
+    
+    public void printDestinationSet(Map<DestinationSetNextObjectiveStoreKey,
+                                      NextNeighbors> ds) {
+        ArrayList<DestinationSetNextObjectiveStoreKey> a = new ArrayList<>();
+        ds.keySet().forEach(key -> a.add(key));
+
+        StringBuilder dsbldr = new StringBuilder();
+        
+        for (int i = 0; i < a.size(); i++) {
+            dsbldr.append("\n " + a.get(i));
+            dsbldr.append(" --> via: " + ds.get(a.get(i)));
+        }
+        log.info("\n********************Next Destination: {}\n",dsbldr.toString());
     }
 
     private class InternalTopologyListener implements TopologyListener {
@@ -1925,7 +2060,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
             }
 
             //Van**************
-            //Implement QoS-aware routing more frequently, every 3 seconds
+            //Implement QoS-aware routing more frequently, every SR_DELAY seconds
             mainEventExecutor.scheduleAtFixedRate(new sr_reconfig(),SR_DELAY, SR_DELAY, SECONDS);
 
             switch (event.type()) {
