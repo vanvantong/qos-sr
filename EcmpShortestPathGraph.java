@@ -120,6 +120,8 @@ import java.util.ArrayList;
 import java.sql.Timestamp;
 import org.onosproject.net.topology.Topology;
 import org.onosproject.segmentrouting.mcast.McastHandler;
+import java.lang.Math; 
+import java.io.*; 
 
 
 /**
@@ -133,7 +135,7 @@ public class EcmpShortestPathGraph {
     HashMap<DeviceId, Integer> deviceSearched = new HashMap<>();
     HashMap<DeviceId, ArrayList<Link>> upstreamLinks = new HashMap<>();
     HashMap<DeviceId, ArrayList<Path>> paths = new HashMap<>();
-    HashMap<Integer, ArrayList<DeviceId>> distanceDeviceMap = new HashMap<>();
+    public HashMap<Integer, ArrayList<DeviceId>> distanceDeviceMap = new HashMap<>();
     DeviceId rootDevice;
     private SegmentRoutingManager srManager;
     private static final Logger log = LoggerFactory.getLogger(EcmpShortestPathGraph.class);
@@ -156,6 +158,7 @@ public class EcmpShortestPathGraph {
      * Calculates the BFS tree.
      */
    private void calcECMPShortestPathGraph() {
+
         deviceQueue.add(rootDevice);
         int currDistance = 0;
         distanceQueue.add(currDistance);
@@ -203,7 +206,30 @@ public class EcmpShortestPathGraph {
                 if (upstreamLinkArray == null) {
                     upstreamLinkArray = new ArrayList<>();
                     upstreamLinkArray.add(copyDefaultLink(link));
-                    //upstreamLinkArray.add(link);
+
+                    /*
+                    double rand = Math.random();
+                    if(rand <= 0.8){
+                        if(McastHandler.fwString != null){
+                            //McastHandler.fwString.toString()
+                            if(!(reachedDevice.toString().compareTo(McastHandler.fwString.toString()) == 0)){
+                                upstreamLinks.put(reachedDevice, upstreamLinkArray);
+                            }
+                        }else{
+                            upstreamLinks.put(reachedDevice, upstreamLinkArray);
+                        }
+                    }else{
+                        if(McastHandler.fwString != null){
+                            //McastHandler.fwString.toString()
+                            if((reachedDevice.toString().compareTo(McastHandler.fwString.toString()) == 0)){
+                                upstreamLinks.put(reachedDevice, upstreamLinkArray);
+                            }
+                        }else{
+                            upstreamLinks.put(reachedDevice, upstreamLinkArray);
+                        }
+                    }
+                    */
+                    
                     upstreamLinks.put(reachedDevice, upstreamLinkArray);
                 } else {
                     // ECMP links
@@ -211,26 +237,30 @@ public class EcmpShortestPathGraph {
                 }
             }
         }
+        //log.info("\n\n********************fwString: {}, upstreamLinks: {}\n\n", McastHandler.fwString, upstreamLinks.toString());
     }
 
     private void getDFSPaths(DeviceId dstDeviceDeviceId, Path path, ArrayList<Path> paths) {
         DeviceId rootDeviceDeviceId = rootDevice;
-        for (Link upstreamLink : upstreamLinks.get(dstDeviceDeviceId)) {
-            /* Deep clone the path object */
-            Path sofarPath;
-            ArrayList<Link> sofarLinks = new ArrayList<>();
-            if (path != null && !path.links().isEmpty()) {
-                sofarLinks.addAll(path.links());
-            }
-            sofarLinks.add(upstreamLink);
-            sofarPath = new DefaultPath(ProviderId.NONE, sofarLinks, ScalarWeight.toWeight(0));
-            if (upstreamLink.src().deviceId().equals(rootDeviceDeviceId)) {
-                paths.add(sofarPath);
-                return;
-            } else {
-                getDFSPaths(upstreamLink.src().deviceId(), sofarPath, paths);
+        if(upstreamLinks.get(dstDeviceDeviceId) != null){
+            for (Link upstreamLink : upstreamLinks.get(dstDeviceDeviceId)) {
+                /* Deep clone the path object */
+                Path sofarPath;
+                ArrayList<Link> sofarLinks = new ArrayList<>();
+                if (path != null && !path.links().isEmpty()) {
+                    sofarLinks.addAll(path.links());
+                }
+                sofarLinks.add(upstreamLink);
+                sofarPath = new DefaultPath(ProviderId.NONE, sofarLinks, ScalarWeight.toWeight(0));
+                if (upstreamLink.src().deviceId().equals(rootDeviceDeviceId)) {
+                    paths.add(sofarPath);
+                    return;
+                } else {
+                    getDFSPaths(upstreamLink.src().deviceId(), sofarPath, paths);
+                }
             }
         }
+
 
     }
 
@@ -309,35 +339,59 @@ public class EcmpShortestPathGraph {
             for(TopologyEdge egde: egdes){
                 weightTopology.weight(egde);
             }
-            Set<Path> paths = McastHandler.topologyService.getPaths(McastHandler.topologyService.currentTopology(), src, dst, weightTopology);
-            Set<Path> rPaths = new HashSet<Path>() ;
-            if((src.toString().compareTo("of:0000000000000006") == 0 && dst.toString().compareTo("of:0000000000000007") == 0) || (src.toString().compareTo("of:0000000000000007") == 0 && dst.toString().compareTo("of:0000000000000006") == 0) ){               
-                rPaths = paths;
-                if(src.toString().compareTo("of:0000000000000006") == 0){
-                    for(int i = 1; i < 6; i++){
-                        String idRouter = "of:000000000000000"+String.valueOf(i);
-                        if(paths.toString().contains(idRouter)){
-                            McastHandler.fwString = idRouter;
-                        }
-                    }
-                }else if(src.toString().compareTo("of:0000000000000007") == 0){
-                    for(int i = 1; i < 6; i++){
-                        String idRouter = "of:000000000000000"+String.valueOf(i);
-                        if(paths.toString().contains(idRouter)){
-                            McastHandler.bwString = idRouter;
-                        }
-                    }
-                }
-                //log.info("\n********************fwString: {}, bwString: {}\n", McastHandler.fwString, McastHandler.bwString);
-            }
 
-            if(paths.toString().contains("of:0000000000000006") && (paths.toString().contains(McastHandler.fwString) || paths.toString().contains(McastHandler.bwString))){
-                rPaths = paths;
-            } else if(paths.toString().contains("of:0000000000000007") && (paths.toString().contains(McastHandler.fwString) || paths.toString().contains(McastHandler.bwString))){
-                rPaths = paths;
+            Set<Path> paths = McastHandler.topologyService.getPaths(McastHandler.topologyService.currentTopology(), src, dst, weightTopology);
+
+            /*
+            if(src.toString().compareTo("of:0000000000000204") == 0 && dst.toString().compareTo("of:0000000000000205") == 0 ){               
+                //log.info("\n**********Paths: {}**********\n", paths);
+                    if(paths.toString().contains("of:0000000000000226")){
+                        //McastHandler.fwString = "of:0000000000000227";
+                        for (Device dev : srManager.deviceService.getDevices()){
+                            if(dev.id().toString().compareTo("of:0000000000000227") == 0){
+                                McastHandler.fwString = dev.id();
+                            }
+                        }
+                    }else{
+                        //McastHandler.fwString = "of:0000000000000226";
+                        for (Device dev : srManager.deviceService.getDevices()){
+                            if(dev.id().toString().compareTo("of:0000000000000226") == 0){
+                                McastHandler.fwString = dev.id();
+                            }
+                        }
+                    }
             }
-            
-            return rPaths;
+            */
+            String routingPath = "of:0000000000000006-of:0000000000000007;of:0000000000000006-";
+            if(src.toString().compareTo("of:0000000000000006") == 0 && dst.toString().compareTo("of:0000000000000007") == 0 ){               
+                if(paths.toString().contains("of:0000000000000001")){
+                    McastHandler.idPath = 1;
+                    routingPath = routingPath + "of:0000000000000001,of:0000000000000001-";
+                }else if(paths.toString().contains("of:0000000000000002")){
+                    McastHandler.idPath = 2;
+                    routingPath = routingPath + "of:0000000000000002,of:0000000000000002-";
+                }else if(paths.toString().contains("of:0000000000000003")){
+                    McastHandler.idPath = 3;
+                    routingPath = routingPath + "of:0000000000000003,of:0000000000000003-";
+                }else if(paths.toString().contains("of:0000000000000004")){
+                    McastHandler.idPath = 4;
+                    routingPath = routingPath + "of:0000000000000004,of:0000000000000004-";
+                }else if(paths.toString().contains("of:0000000000000005")){
+                    McastHandler.idPath = 5;
+                    routingPath = routingPath + "of:0000000000000005,of:0000000000000005-";
+                }
+                routingPath = routingPath + "of:0000000000000007;0";
+                log.info("\n**********Paths: {}**********\n", paths);
+                //Write the routing paths to file in order to estimate QoE
+                try {
+                    BufferedWriter writer = new BufferedWriter(new FileWriter("/home/vantong/onos/apps/segmentrouting/app/src/main/java/org/onosproject/segmentrouting/SRPaths.csv"));
+                    writer.write(routingPath+'\n');
+                    writer.close();
+                }catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }                     
+            return paths;
         }     
 
 
@@ -359,37 +413,26 @@ public class EcmpShortestPathGraph {
             
             //Change the routing algorithm
             Set<Path> tmpArr = weightRouting(rootDevice, targetDevice);
-            for(Path p : tmpArr){
-                pathArray.add(p);
-            }
+            //for(Path p : tmpArr){
+            //    pathArray.add(p);
+            //}
             
+                        
             //Identifying the routing paths using DFS
-            //getDFSPaths(sw, null, pathArray);
+            getDFSPaths(sw, null, pathArray);
             paths.put(targetDevice, pathArray);
 
-/*
-            ArrayList<Path> pathArrayTmp = paths.get(targetDevice);
-            if(targetDevice.toString().compareTo("of:0000000000000007") == 0){
-                for(Path path: pathArrayTmp){
-                    log.info("\n*****************************Path: {}\n", path);
+            /*
+            if(McastHandler.fwString != null){
+                if (!pathArray.toString().contains(McastHandler.fwString.toString())) {
+                        paths.put(targetDevice, pathArray);
                 }
             }
-*/
-            
+            */
 
-        }
-        try
-        {
-            BufferedWriter writer = new BufferedWriter(new FileWriter("/home/vantong/onos/apps/segmentrouting/app/src/main/java/org/onosproject/segmentrouting/seg.csv", true));
-            //log.info("\n*****************************\n");
-            writer.write("\n\n*****************************\n\n");
-            Date date = new Date();
-            writer.write("\n"+date.toString()+"\n");
-            writer.close();
-        }
-        catch(Exception s)
-        {
-            log.info("File does Not Exist Please Try Again.");
+            //if(rootDevice.toString().compareTo("of:0000000000000204") == 0 && targetDevice.toString().compareTo("of:0000000000000205") == 0 ){               
+            //    log.info("\n\n********************Path: {}\n\n",pathArray);
+            //}   
         }
         
         return pathArray;
@@ -498,4 +541,3 @@ public class EcmpShortestPathGraph {
         return sBuilder.toString();
     }
 }
-
